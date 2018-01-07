@@ -1,7 +1,22 @@
-#Feature2d Exctraction Demo
+# RetBul Core - Feature2d Exctraction 
 
-Just a demo of feature extraction techniques, implementing SURF & SIFT image features using OpenCV 3 and Python 2.7 libraries.
+RetBul's core feature extraction techniques are implemented with SURF & SIFT image descriptors.
 
-For more information please check the source.
+## Getting Started
 
+These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
 
+### Prerequisites
+
+You need to install the following software
+
+```
+OpenCV 3+
+Python 2.7+
+NumPy
+Pandas
+Pyjson-Tricks
+```
+## License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
