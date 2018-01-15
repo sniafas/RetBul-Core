@@ -35,8 +35,8 @@ def wdata(kp1,d1,kp2,d2,inliers,acc):
 
 	ws.cell(row=kpid2-1, column=11, value=inliers) #score
 	ws.cell(row=kpid2-1, column=12, value=acc) #score
-	wb.save(filename = 'surf_output.xls')
-	pd.read_excel('surf_output.xls', sheetname='Data Collection').to_csv('surf_output.csv', index=False)
+	wb.save(filename = 'surf_single_output.xls')
+	pd.read_excel('surf_single_output.xls', sheetname='Data Collection').to_csv('surf_single_output.csv', index=False)
 
 
 def drawKeypoint(img, p):
@@ -68,8 +68,6 @@ def filter_rawMatches(kp1, kp2, matches, ratio = 0.75):
 	mkp1, mkp2 = [], []
 	
 	for r in range(len(matches)-1):
-		#print matches[r].distance
-		#rint matches[r+1].distance
 
 		if matches[r].distance < ratio * matches[r+1].distance:
 			m = matches[r]
@@ -124,16 +122,15 @@ if __name__ == '__main__':
 		print "-img2: Test Image"	
 		sys.exit(1)	
 
-	print "\n================"
-	print "Hessian", results.hss
-	print "Octaves", results.nO
-	print "Layers", results.nL
-	print "================"
-	print "Processing...\n"		
+	print("\n================")
+	print("Hessian", results.hss)
+	print("Octaves", results.nO)
+	print("Layers", results.nL)
+	print("================")
+	print("Processing...\n")
 
 	## SURF features and descriptor
 	surf = cv2.xfeatures2d.SURF_create(results.hss,results.nO,results.nL,results.e,results.upright)
-	#surf = cv2.xfeatures2d.SURF_create()
 	## #----------------- # ##
 	## Read, Resize, Grayscale Query Image ##
 	img1 = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
@@ -150,11 +147,7 @@ if __name__ == '__main__':
 	## # Use BFMatcher, Euclidian distance, Eliminate Multiples # ##
 	bf = cv2.BFMatcher(cv2.NORM_L2,crossCheck=True)
 	raw_matches = bf.match(d1,d2)
-	
-	#kp_pairs = sorted(raw_matches,key = lambda x:x.distance)
-	#src_points = np.float32([kp1[m.queryIdx].pt for m in kp_pairs])
-	#dst_points = np.float32([kp2[m.queryIdx].pt for m in kp_pairs])
-	src_points, dst_points, kp_pairs = filter_rawMatches(kp1,kp2,raw_matches)	
+	src_points, dst_points, kp_pairs = filter_rawMatches(kp1,kp2,raw_matches)
 
 	print 'Matching tentative points in image1: %d, image2: %d' % (len(src_points), len(dst_points))
 	

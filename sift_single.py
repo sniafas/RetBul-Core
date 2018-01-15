@@ -36,8 +36,8 @@ def wdata(kp1,d1,kp2,d2,inliers,acc):
 
 	ws.cell(row=max(kpid1,kpid2)-1, column=11, value=inliers) #score
 	ws.cell(row=max(kpid1,kpid2)-1, column=12, value=acc) #score
-	wb.save(filename = 'sift_output.xls')
-	pd.read_excel('sift_output.xls', sheetname='Data Collection').to_csv('sift_output.csv', index=False)
+	wb.save(filename = 'sift_single_output.xls')
+	pd.read_excel('sift_single_output.xls', sheetname='Data Collection').to_csv('sift_single_output.csv', index=False)
 
 def drawKeypoint(img, p):
 	
@@ -68,8 +68,6 @@ def filter_rawMatches(kp1, kp2, matches, ratio = 0.75):
 	mkp1, mkp2 = [], []
 	
 	for r in range(len(matches)-1):
-		#print matches[r].distance
-		#rint matches[r+1].distance
 
 		if matches[r].distance < ratio * matches[r+1].distance:
 			m = matches[r]
