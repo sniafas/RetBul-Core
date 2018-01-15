@@ -12,14 +12,12 @@ These instructions will get you a copy of the project up and running on your loc
 
 You need to install the following software.
 
-```
 * OpenCV 3+
 * Python 2.7+
 * NumPy
 * Pandas
 * Pyjson-Tricks
 * [VyronasDb](https://retbul.sniafas.eu/download) - Vyronas Database
-```
 
 ### Execute
 
