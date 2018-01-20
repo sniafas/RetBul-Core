@@ -1,381 +1,196 @@
 #!/usr/bin/env python
 
-'''
-SIFT features detection & extraction + BruteForce Matching + RANSAC homography 
-
-A simple example of feature extraction techniques using SIFT features,
-					image matching using BruteForce Matching combined with Lowe filter
-					and RANSAC homography.
-Experiments were applied on Vironas database exclusively.
-
-Source code is inspired from OpenCV libraries.
-==================
-
-Usage:
-------
-    sift.py <img1> <img2>  --nF <nFeatures value> --nL <nOctaveLayers value> --cT <contrastThres value> --eT <edgeThresshold value> --sG <Sigma> --u --e --kpfixed --v --o"
-
-    nF: Number of Features to retain
-    nL: Number of Octave Layers
-    cT: Contrast Threshold weak feature filter factor
-    eT: Edge Threshold edge-like feature factor
-    sG: Sigma of the Gaussian
-    kpfixed: Fixed feature keypoint colour
-    v: images to files
-    o: data to files
-'''
-
-import datetime,time
-import os,sys,getopt
-import numpy as np
 import cv2
-import subprocess
+import pandas as pd
+import numpy as np
+import argparse,sys
 import math
-from json_tricks.np import dump, dumps, load, loads, strip_comments
-
-queryImg = ''
-nFeatures = 0
-nOctaveLayers = 3
-contrastThres = 0.08
-edgeThres = 10
-sigma = 1.6
-verbose = 0
-kpfixed = 0
-output = 0
-
-def writeLogsQuery(timestampFolder,d1,kp1):
-
-	try:
-		desc1_log = open(timestampFolder + '/descriptors1.txt', 'w')
-		desc1_len_log = open(timestampFolder + '/descriptors1_len.txt', 'w')
-
-		kp1_len_log = open(timestampFolder + '/kp1_len.txt', 'w')
-		kp1_angle_log = open(timestampFolder + '/kp1_angle.txt', 'w')
-		kp1_pt_log = open(timestampFolder + '/kp1_pt.txt', 'w')
-		kp1_octave_log = open(timestampFolder + '/kp1_octave.txt', 'w')
-		kp1_size_log = open(timestampFolder + '/kp1_size.txt', 'w')
-
-	except (RuntimeError, TypeError, NameError):
-		print "Cannot create log files"
-
-
-	desc1_len_log.write('%s' % len(d1))
-	kp1_len_log.write('%s' % len(kp1) )
-
-
-	for d1log in d1:
-		desc1_log.write("%s\n" % d1log)
-
-
-	for kp1log in kp1:
-		kp1_angle_log.write("%s\n" % kp1log.angle)
-		kp1_pt_log.write("%s %s\n" % kp1log.pt)
-		kp1_octave_log.write("%s\n" % kp1log.octave)
-		kp1_size_log.write("%s\n" % kp1log.size)
-
-	desc1_log.close()
-	desc1_len_log.close()		
-
-	kp1_len_log.close()
-	kp1_angle_log.close()
-	kp1_pt_log.close()
-	kp1_octave_log.close()
-	kp1_size_log.close()
-
-def writeLogsTrain(save_path,d2,kp2):
-
-	try:	
-		desc2_log = open(save_path + '/descriptors2.txt', 'w')
-		desc2_len_log = open(save_path + '/descriptors2_len.txt', 'w')
-
-		kp2_len_log = open(save_path + '/kp2_len.txt', 'w')
-		kp2_angle_log = open(save_path + '/kp2_angle.txt', 'w')
-		kp2_pt_log = open(save_path + '/kp2_pt.txt', 'w')
-		kp2_octave_log = open(save_path + '/kp2_octave.txt', 'w')
-		kp2_size_log = open(save_path + '/kp2_size.txt', 'w')
-
-	except (RuntimeError, TypeError, NameError):
-		print "Cannot create log files"		
-
-	desc2_len_log.write('%s' % len(d2))
-	kp2_len_log.write('%s' % len(kp2))
-
-	for d2log in d2:
-		desc2_log.write("%s\n" % d2log)
-
-	for kp2log in kp2:
-		kp2_angle_log.write("%s\n" % kp2log.angle)
-		kp2_pt_log.write("%s %s\n" % kp2log.pt)
-		kp2_octave_log.write("%s\n" % kp2log.octave)
-		kp2_size_log.write("%s\n" % kp2log.size)				
-
-	desc2_log.close()
-	desc2_len_log.close()
-
-	kp2_angle_log.close()
-	kp2_pt_log.close()
-	kp2_octave_log.close()
-	kp2_size_log.close()		
-	kp2_len_log.close()	
-
-def hsLog(save_path,Homography,status):
-
-	H = open(save_path + '/h.txt','w')
-	st = open(save_path + '/status.txt','w')
-
-	H.write("%s\n" % Homography)
-	st.writelines("%s\n" % str(status).split('\n') )
-
-	st.close()
-	H.close()
+import glob
+from openpyxl import Workbook, load_workbook
+from json_tricks.np import dump, load
+from utilities import Utilities
 
 def filter_rawMatches(kp1, kp2, matches, ratio = 0.75):
 
 	mkp1, mkp2 = [], []
 	
 	for r in range(len(matches)-1):
-		#print matches[r].distance
-		#print matches[r+1].distance
-
 		if matches[r].distance < ratio * matches[r+1].distance:
 			m = matches[r]
 			mkp1.append(kp1[m.queryIdx])
-			mkp2.append(kp2[m.trainIdx])
-	
+			mkp2.append(kp2[m.trainIdx])	
 	p1 = np.float32([kp.pt for kp in mkp1])
 	p2 = np.float32([kp.pt for kp in mkp2])
 	kp_pairs = zip(mkp1, mkp2)	
 
-	return p1,p2,kp_pairs	
+	return p1,p2,kp_pairs		
 
-def drawKeypoint(img, p):
-	
-	for i in range(0,len(p)):
-		
-		x = int(round(p[i].pt[0]))
-		y = int(round(p[i].pt[1]))
-		center = (x,y)
-			
-		radius = round(p[i].size/2) # KeyPoint::size is a diameter
-		
-		
-		#draw the circles around keypoints with the keypoints size
-		cv2.circle( img, center, int(radius), (0,0,100), 1)
-		
-		#draw orientation of the keypoint, if it is applicable		
-		if p[i].angle != -1 :
-			
-			srcAngleRad = p[i].angle * 3.14159/180;
-			orient1 = int(round(math.cos(srcAngleRad)*radius ))
-			orient2 = int(round(math.sin(srcAngleRad)*radius ))
-			cv2.line( img, center, (x+orient1,y+orient2), (0,150,0), 1);
+def rankingList(index,image_id,n_inliers,percent):
 
-	return img
-		
-def mkExpDir():
-
-	## Prepare Experiment Folders ##
-	## create new timestamp folder or use the existing for the current day experiments
-	ts = time.time()
-
-	listExpsTimeStmps = (subprocess.check_output(["ls ../exps/", "-x"], shell=True))
-	dateTimeStamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d') 	#current date
-
-	if dateTimeStamp in listExpsTimeStmps: 					# if there are previous xperiments for the current date, populate
-		
-		try:
-			curTimestamp = datetime.datetime.fromtimestamp(ts).strftime('%H:%M:%S')
-
-			timestampFolder = "../exps/" + dateTimeStamp + "/exp_" + curTimestamp
-			os.mkdir(timestampFolder , 0775)
-		except (RuntimeError, TypeError, NameError):
-			print "Can't create experiment folder"
-
-	else:																		# create current date timestamp if not exist
-		curTimestamp = datetime.datetime.fromtimestamp(ts).strftime('%H:%M:%S')
-
-		os.mkdir("../exps/" + dateTimeStamp , 0775)
-		timestampFolder = "../exps/" + dateTimeStamp + "/exp_" + curTimestamp
-		os.mkdir(timestampFolder , 0775)
-	
-	return timestampFolder					
+	resList[index][0] = index
+	resList[index][1] = image_id
+	resList[index][2] = n_inliers
+	resList[index][3] = percent		
 
 if __name__ == '__main__':
 
+	parser = argparse.ArgumentParser()
+
+	parser.add_argument('-img1', action='append', dest='im1',             
+	                    help='Query Image')
+	parser.add_argument('-nF', action='store', dest='nFeatures', type=int,
+	                     default=0,help='Number of Features to retain <0-5000>')
+	parser.add_argument('-nL', action='store', dest='nOctaveLayers', type=int,
+	                     default=3,help='Number of Octave Layers <3-6>')
+	parser.add_argument('-cT', action='store',dest='contrastThres', type=float,
+						default=0.08,help='Contrast Threshold weak feature filter factor')
+	parser.add_argument('-eT', action='store',dest='edgeThres', type=int,
+						default=10,help='Edge Threshold edge-like feature factor')
+	parser.add_argument('-kpfixed', action='store_true',default=False,
+	                    dest='kpfixed',help='Fixed Keypoint Colour')
+	parser.add_argument('-v', action='store_true',default=False,
+	                    dest='v',help='Save image to file')
+	parser.add_argument('-o', action='store_true',default=False,
+	                    dest='o',help='Save data to CSV')
+	results = parser.parse_args()
+
+	if results.im1:
+		img1Path = str(results.im1)[2:-2]
+	else:
+		parser.print_help()
+		print("-img1: Query Image")
+		sys.exit(1)
+
+	util = Utilities()
+
 	#image counter
-	n = 0 
-
-	# read shell arguments 
-	try:
-		
-		opts, args = getopt.getopt(sys.argv[3:], '', ['h=' , 'nO=' , 'nL=' , 'sG=' , 'e' , 'u', 'kpfixed', 'v', 'o' ])
-	except getopt.GetoptError as e:
-		print (str(e))
-		print "Usage: <img1> <img2>  --nF <nFeatures value> --nL <nOctaveLayers value> --cT <contrastThres value> --eT <edgeThresshold value> --sG <Sigma> --u --e --kpfixed --v --o"
-		sys.exit(2)
+	n = 0
+	## Prepare Dataset ##
+	dataset = []
+	listImages = glob.glob('dataset/*.jpg')
+	for i in listImages:
+		dataset.append(i.split('/')[-1])
 	
+	#creating a list of (<image>,#inliers) pairs
+	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
+	rankedHouseList = np.zeros( 15, [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
 
-	for o, a in opts:	
-		
-		if o == '--nF':				# number of features
-			nFeatures = a
-		elif o == '--nL':			# number of octave Layers
-			nOctaveLayers = a
-		elif o == '--cT':			# contrast Threshold
-			contrastThres = a			
-		elif o == '--eT':			# edge Threshold
-			edgeThres = a
-		elif o == '--sG':			# sigma of Gaussian
-			sigma = a			
-		elif o == '--kpfixed':		# fixed keypoint colour on/off
-			kpfixed = 1
-		elif o == '--v':			# save images to files on/off
-			verbose = 1
-		elif o == '--o':			# output data to files on/off
-			output = 1											
-		else:
-			print "Usage: <img1> <img2>  --nF <nFeatures value> --nL <nOctaveLayers value> --cT <contrastThres value> --eT <edgeThresshold value> --u --e --kpfixed --v --o"
 
-	# Experiment Folder Routine
-	timestampFolder = mkExpDir()		
-
-	## #----------------- # ##
-	## Read, Resize, Convert Query Image ##
-
-	img1 = cv2.imread(sys.argv[1], 1)
-	img1Res = cv2.resize(img1, (480, 640))
-	gray1 = cv2.cvtColor(img1Res, cv2.COLOR_RGB2GRAY)
-
-	print "\nFeatures: %d, OctaveLayers: %d, ContrastThres: %f, EdgeThres: %f, Sigma: %f" % (nFeatures,contrastThres,nOctaveLayers,edgeThres,sigma)
+	print("\n================")
+	print("Features", results.nFeatures)
+	print("Octave", results.nOctaveLayers)
+	print("Contrast Thres", results.contrastThres)
+	print("Edge Threshold", results.edgeThres)
+	print("================")
 
 	## SIFT features and descriptor
-	sift = cv2.xfeatures2d.SIFT_create(int(nFeatures),int(nOctaveLayers),float(contrastThres),int(edgeThres),float(sigma))
-	
-	kp1, d1 = sift.detectAndCompute(gray1, None)
-
-	## # open, write, close logging files from query Image # ##
-	if output:
-		writeLogsQuery(timestampFolder,d1,kp1)
-
-	if verbose:
-		
-		if kpfixed:
-			img1Res1 = drawKeypoint(img1Res,kp1)
-		else:
-			cv2.drawKeypoints(img1Res,kp1,img1Res,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-
-		cv2.imwrite(timestampFolder + '/sift_keypoints1.jpg', img1Res)
-
+	sift = cv2.xfeatures2d.SIFT_create(results.nFeatures,results.nOctaveLayers,results.contrastThres,results.edgeThres,1.6)	
 	## #----------------- # ##
-	## Read, Resize, Convert Train Image ##	
+	## Read, Resize, Grayscale Query Image ##
+	img1 = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
+	img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )	
+	kp1, d1 = sift.detectAndCompute(img1Gray, None)
+	
+	if results.o:
+		util.writeQuery(kp1,d1,img1Path,'surf_data.xlsx')
+	
+	for img2Path in dataset:
 
-	img2 = cv2.imread(sys.argv[2],1)
-	img2Res = cv2.resize(img2,(480,640))
-	gray2 = cv2.cvtColor(img2Res,cv2.COLOR_RGB2GRAY )	
+		print("\nProcessing..")
+		print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
+		## #----------------- # ##
+		## Read, Resize, Grayscale Test Image ## 
+		img2 = cv2.resize(cv2.imread("dataset/" + img2Path, 1), (480, 640))
+		img2Gray = cv2.cvtColor(img2,cv2.COLOR_RGB2GRAY )	
+		kp2, d2 = sift.detectAndCompute(img2Gray, None)
 
-	print "\n================"
-	print "\nProcessing.. \n"
+	
+		## # Use BFMatcher, Euclidian distance, Eliminate Multiples # ##
+		bf = cv2.BFMatcher(cv2.NORM_L2,crossCheck=True)
+		raw_matches = bf.match(d1,d2)
+		src_points, dst_points, kp_pairs = filter_rawMatches(kp1,kp2,raw_matches)	
 
-	## -Compute SURF Descriptors- ##
-	computeTime = time.time()
-
-	kp2, d2 = sift.detectAndCompute(gray2,None)
-
-	print "Detect and Compute Train Descriptors : ",np.float16(time.time() - computeTime), " seconds \n"
-
-	print '#Descriptors in image1: %d, image2: %d' % (len(d1), len(d2))
-	print '#Keypoints in image1: %d, image2: %d \n' % (len(kp1), len(kp2))
-
-	## # open, write, close logging files from trainImage # ##
-	if output:
-		writeLogsTrain(timestampFolder,d2,kp2)
-
-	if verbose:
+		print('Matching tentative points in image1: %d, image2: %d' % (len(src_points), len(dst_points)))
 		
-		if kpfixed:
-			img2Res2 = drawKeypoint(img2Res,kp2)
+		## # ----------------# ##
+		## # Homography # ##
+		print('#----------------#')
+		print('Homography')
+		print('#----------------#')
+		if len(kp_pairs) > 4:
+			
+			Homography, status = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+			
+			inliers = np.count_nonzero(status)
+			percent = float(inliers) / len(kp_pairs)
+		
+			print("# Inliers %d out of %d tentative pairs" % (inliers,len(kp_pairs)))
+			print('Score:' + '{percent:.2%}\n'.format(percent= percent))
+			rankingList(n,img2Path,inliers,percent)
 		else:
-			cv2.drawKeypoints(img2Res,kp2,img2Res,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-
-		cv2.imwrite(timestampFolder + '/sift_keypoints2.jpg', img2Res)
-
-	## # ----------------# ##
-	## # Matching & Homography # ##
+			rankingList(n,img2Path,0,0)
+			print("Not enough correspondenses")
 
 
-	## # Use simple matching for all matches # ##
-	bf = cv2.BFMatcher(cv2.NORM_L1,crossCheck=True)
-	raw_matches = bf.match(d1,d2)
-	p1, p2, kp_pairs = filter_rawMatches(kp1,kp2,raw_matches)	
+		n = n+1
+		## Verbose Results
+		if results.v:
 
-	if verbose:				
-		img_match = cv2.drawMatches(img1Res,kp1,img2Res,kp2,raw_matches,None, flags=2)
-		cv2.imwrite(timestampFolder + '/bf_match.jpg', img_match)
+			img1kp = img1
+			img2kp = img2
+			if results.kpfixed:
+				img1kp = util.drawKeypoint(img1kp,kp1)
+				img2kp = util.drawKeypoint(img2kp,kp2)
+			else:			
+				cv2.drawKeypoints(img1kp,kp1,img1kp,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+				cv2.drawKeypoints(img2kp,kp2,img2kp,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+				print("Default Keypoints")	
+			
+			cv2.imshow('Query',img1kp)
+			cv2.imshow('Test',img2kp)
+			imgTentMatches = cv2.drawMatches(img1kp,kp1,img2kp,kp2,raw_matches,None, flags=2)
+			cv2.imshow('Tentative Matches',imgTentMatches)
+
+			try:
+				h1, w1, z1 = img1.shape[:3]
+				h2, w2, z2 = img2.shape[:3]
+				img3 = np.zeros((max(h1, h2), w1+w2,z1), np.uint8)
+				img3[:h1, :w1, :z1] = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
+				img3[:h2, w1:w1+w2, :z2] = cv2.resize(cv2.imread("dataset/" + img2Path, 1), (480, 640))
+				
+				p1 = np.int32([kpp[0].pt for kpp in kp_pairs])
+				p2 = np.int32([kpp[1].pt for kpp in kp_pairs]) + (w1, 0)
+				
+				for (x1, y1), (x2, y2), inlier in zip(p1,p2, status):
+					if inlier:
+						cv2.circle(img3, (x1, y1), 2, (0,250,0), 5)
+						cv2.circle(img3, (x2, y2), 2, (0,250,0), 5)
+						cv2.line(img3, (x1, y1), (x2, y2), (255,100,0),2)
+					else:
+						cv2.line(img3, (x1-2, y1-2), (x1+2, y1+2), (0, 0, 255), 3)
+						cv2.line(img3, (x1-2, y1+2), (x1+2, y1-2), (0, 0, 255), 3)
+						cv2.line(img3, (x2-2, y2-2), (x2+2, y2+2), (0, 0, 255), 3)
+						cv2.line(img3, (x2-2, y2+2), (x2+2, y2-2), (0, 0, 255), 3)
+			
+			except (RuntimeError, TypeError, NameError):
+				print("Not enough Inliers")
+
+			cv2.imshow('SIFT Match + Inliers',img3)
+			cv2.waitKey(0)
+			cv2.destroyAllWindows()		
+
+		#Output CSV
+		if results.o:
+			util.writeTest(kp2,d2,img2Path,inliers,percent,'surf_data.xlsx')
 	
-	print 'Matching tentative points in image1: %d, image2: %d' % (len(p1), len(p2))
-	
-	## # ----------------# ##
-	## # Homography # ##
+	print("#### Ranking ####")
 
-	print 'Homography\n'
+	rList = np.sort(resList, order= 'inliers')[::-1]
+	for bestPair in range(10):
+		print('#%d: %s -> Inliers: %d') % (bestPair + 1, rList[bestPair][1], rList[bestPair][2])
+		print('{percent:.2%}'.format(percent= rList[bestPair][3]))
 
-	if len(kp_pairs) > 4:
-		
-		Homography, status = cv2.findHomography(p1, p2, cv2.RANSAC, 5.0)
-		inliers = np.count_nonzero(status)
-		percent = float(inliers) / len(kp_pairs)
-	
-		print "# Inliers %d out of %d tentative pairs" % (inliers,len(kp_pairs))
-		print '{percent:.2%}'.format(percent= percent )
-
-		
-		## # open,save,close Homography results
-		if output:
-			hsLog(timestampFolder,Homography, status)	
-
-		img1Res = cv2.resize(img1,(480,640))
-		img2Res = cv2.resize(img2,(480,640))		
-		try:
-
-			h1, w1, z1 = img1Res.shape[:3]
-			h2, w2, z2 = img2Res.shape[:3]
-			img3 = np.zeros((max(h1, h2), w1+w2,z1), np.uint8)
-			img3[:h1, :w1, :z1] = img1Res
-			img3[:h2, w1:w1+w2, :z2] = img2Res
-
-			p1 = np.int32([kpp[0].pt for kpp in kp_pairs])
-			p2 = np.int32([kpp[1].pt for kpp in kp_pairs]) + (w1, 0)
-
-			# plot the matches
-			color = (0,250,0)
-
-			for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-				if inlier:
-					cv2.circle(img3, (x1, y1), 2, color, 5)
-					cv2.circle(img3, (x2, y2), 2, color, 5)
-					cv2.line(img3, (x1, y1), (x2, y2), (255,100,0),2)
-				else:
-					col = (0, 0, 255)
-					r = 2
-					thickness = 3
-					cv2.line(img3, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
-					cv2.line(img3, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
-					cv2.line(img3, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
-					cv2.line(img3, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
-
-			if verbose:
-				cv2.imwrite(timestampFolder + '/sift_match.jpg', img3)
-
-		except (RuntimeError, TypeError, NameError):
-			print "Not enough Inliers"
-
-	else:
-		print "Not enough tentative correspondenses"
-	
-	mdata = {	'Query': queryImg, 'Descriptor' : 'sift' , 'nFeatures': nFeatures , 
-				'nOctaveLayers' : nOctaveLayers , 'contrastThres' : contrastThres,
-				'edgeThres' : edgeThres
-			}
-
-	with open(timestampFolder + '/mdata.json','w') as mdataFile:
-		dump( {'Metadata': mdata },mdataFile )
+	## # Results and Experimental Values Logging # ##
+	jList = rList.reshape((n,1))
+	with open('results.json','w') as resultFile:
+		dump({'Results': jList },resultFile)
