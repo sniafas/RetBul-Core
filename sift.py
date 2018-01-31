@@ -6,9 +6,11 @@ import numpy as np
 import argparse,sys
 import math
 import glob
+import subprocess
 from openpyxl import Workbook, load_workbook
 from json_tricks.np import dump, load
 from utilities import Utilities
+
 
 def filter_rawMatches(kp1, kp2, matches, ratio = 0.75):
 
@@ -73,8 +75,6 @@ if __name__ == '__main__':
 	
 	#creating a list of (<image>,#inliers) pairs
 	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
-	rankedHouseList = np.zeros( 15, [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
-
 
 	print("\n================")
 	print("Features", results.nFeatures)
@@ -90,11 +90,8 @@ if __name__ == '__main__':
 	img1 = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
 	img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )	
 	kp1, d1 = sift.detectAndCompute(img1Gray, None)
-	
-	if results.o:
-		util.writeQuery(kp1,d1,img1Path,'surf_data.xlsx')
-	
-	for img2Path in dataset:
+
+	for img2Path in dataset[:3]:
 
 		print("\nProcessing..")
 		print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
@@ -103,7 +100,6 @@ if __name__ == '__main__':
 		img2 = cv2.resize(cv2.imread("dataset/" + img2Path, 1), (480, 640))
 		img2Gray = cv2.cvtColor(img2,cv2.COLOR_RGB2GRAY )	
 		kp2, d2 = sift.detectAndCompute(img2Gray, None)
-
 	
 		## # Use BFMatcher, Euclidian distance, Eliminate Multiples # ##
 		bf = cv2.BFMatcher(cv2.NORM_L2,crossCheck=True)
@@ -119,8 +115,7 @@ if __name__ == '__main__':
 		print('#----------------#')
 		if len(kp_pairs) > 4:
 			
-			Homography, status = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
-			
+			Homography, status = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)			
 			inliers = np.count_nonzero(status)
 			percent = float(inliers) / len(kp_pairs)
 		
@@ -130,7 +125,6 @@ if __name__ == '__main__':
 		else:
 			rankingList(n,img2Path,0,0)
 			print("Not enough correspondenses")
-
 
 		n = n+1
 		## Verbose Results
@@ -181,10 +175,12 @@ if __name__ == '__main__':
 
 		#Output CSV
 		if results.o:
-			util.writeTest(kp2,d2,img2Path,inliers,percent,'surf_data.xlsx')
-	
-	print("#### Ranking ####")
+			util.initWrite()
+			util.writeTest(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
+			util.closeWrite(img2Path,'sift')	
+	subprocess.check_output(["sed -e '!d' sift*.csv >> sift_" + img1Path[8:-4] +"_merge.csv"], shell=True)
 
+	print("\n#### Ranking ####")
 	rList = np.sort(resList, order= 'inliers')[::-1]
 	for bestPair in range(10):
 		print('#%d: %s -> Inliers: %d') % (bestPair + 1, rList[bestPair][1], rList[bestPair][2])
