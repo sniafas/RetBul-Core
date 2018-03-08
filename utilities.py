@@ -19,13 +19,13 @@ class Utilities:
 		self.ws = self.wb.active			
 		self.ws.title = "Dataset"
 
-	def closeWrite(self,image,desc):
+	def closeWrite(self,outFolder,image,desc):
 
-		self.fname = str(desc) + '_' + str(image[8:-4]) + ".xls"
+		self.fname = outFolder + str(desc) + '_' + str(image[:-4]) + ".xls"
 		self.wb.save(self.fname)
-		pd.read_excel(self.fname, sheetname="Dataset").to_csv(desc + '_' + image[8:-4] + '_test.csv', index=False)
+		pd.read_excel(self.fname, sheetname="Dataset").to_csv(outFolder + desc + '_' + image[8:-4] + '_test.csv', index=False)
 
-	def writeTest(self,keypoints,descriptors,qImage,tImage,inliers,percent,size):
+	def writeFile(self,keypoints,descriptors,qImage,tImage,inliers,percent,size):
 
 		self.ws.cell(row=self.head, column=1, value=qImage)
 		self.ws.cell(row=self.head, column=2, value=tImage)

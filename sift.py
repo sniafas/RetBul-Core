@@ -54,10 +54,10 @@ if __name__ == '__main__':
 	                    dest='v',help='Save image to file')
 	parser.add_argument('-o', action='store_true',default=False,
 	                    dest='o',help='Save data to CSV')
-	results = parser.parse_args()
+	arguments = parser.parse_args()
 
-	if results.im1:
-		img1Path = str(results.im1)[2:-2]
+	if arguments.im1:
+		img1Path = str(arguments.im1)[2:-2]
 	else:
 		parser.print_help()
 		print("-img1: Query Image")
@@ -77,21 +77,21 @@ if __name__ == '__main__':
 	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
 
 	print("\n================")
-	print("Features", results.nFeatures)
-	print("Octave", results.nOctaveLayers)
-	print("Contrast Thres", results.contrastThres)
-	print("Edge Threshold", results.edgeThres)
+	print("Features", arguments.nFeatures)
+	print("Octave", arguments.nOctaveLayers)
+	print("Contrast Thres", arguments.contrastThres)
+	print("Edge Threshold", arguments.edgeThres)
 	print("================")
 
 	## SIFT features and descriptor
-	sift = cv2.xfeatures2d.SIFT_create(results.nFeatures,results.nOctaveLayers,results.contrastThres,results.edgeThres,1.6)	
+	sift = cv2.xfeatures2d.SIFT_create(arguments.nFeatures,arguments.nOctaveLayers,arguments.contrastThres,arguments.edgeThres,1.6)	
 	## #----------------- # ##
 	## Read, Resize, Grayscale Query Image ##
 	img1 = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
 	img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )	
 	kp1, d1 = sift.detectAndCompute(img1Gray, None)
 
-	for img2Path in dataset[:3]:
+	for img2Path in dataset:
 
 		print("\nProcessing..")
 		print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
@@ -128,11 +128,11 @@ if __name__ == '__main__':
 
 		n = n+1
 		## Verbose Results
-		if results.v:
+		if arguments.v:
 
 			img1kp = img1
 			img2kp = img2
-			if results.kpfixed:
+			if arguments.kpfixed:
 				img1kp = util.drawKeypoint(img1kp,kp1)
 				img2kp = util.drawKeypoint(img2kp,kp2)
 			else:			
@@ -174,11 +174,11 @@ if __name__ == '__main__':
 			cv2.destroyAllWindows()		
 
 		#Output CSV
-		if results.o:
+		if arguments.o:
+			outFolder = "sift_experiments/"
 			util.initWrite()
-			util.writeTest(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
-			util.closeWrite(img2Path,'sift')	
-	subprocess.check_output(["sed -e '!d' sift*.csv >> sift_" + img1Path[8:-4] +"_merge.csv"], shell=True)
+			util.writeFile(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
+			util.closeWrite(outFolder,img2Path,'sift')
 
 	print("\n#### Ranking ####")
 	rList = np.sort(resList, order= 'inliers')[::-1]
@@ -187,6 +187,8 @@ if __name__ == '__main__':
 		print('{percent:.2%}'.format(percent= rList[bestPair][3]))
 
 	## # Results and Experimental Values Logging # ##
-	jList = rList.reshape((n,1))
-	with open('results.json','w') as resultFile:
-		dump({'Results': jList },resultFile)
+	if arguments.o:
+		subprocess.check_output(["sed -e '!d' sift_experiments/sift*.csv >> sift_experiments/sift_" + img1Path[8:-4] +"_merge.csv"], shell=True)
+		jList = rList.reshape((n,1))
+		with open('results.json','w') as resultFile:
+			dump({'Results': jList },resultFile)

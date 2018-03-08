@@ -55,10 +55,10 @@ if __name__ == '__main__':
 	                    dest='v',help='Save image to file')
 	parser.add_argument('-o', action='store_true',default=False,
 	                    dest='o',help='Save data to CSV')
-	results = parser.parse_args()
+	arguments = parser.parse_args()
 
-	if results.im1:
-		img1Path = str(results.im1)[2:-2]
+	if arguments.im1:
+		img1Path = str(arguments.im1)[2:-2]
 	else:
 		parser.print_help()
 		print("-img1: Query Image")
@@ -78,13 +78,13 @@ if __name__ == '__main__':
 	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
 	
 	print("\n================")
-	print("Hessian", results.hss)
-	print("Octaves", results.nO)
-	print("Layers", results.nL)
+	print("Hessian", arguments.hss)
+	print("Octaves", arguments.nO)
+	print("Layers", arguments.nL)
 	print("================")
 
 	## SURF features and descriptor
-	surf = cv2.xfeatures2d.SURF_create(results.hss, results.nO, results.nL, results.e, results.upright)
+	surf = cv2.xfeatures2d.SURF_create(arguments.hss, arguments.nO, arguments.nL, arguments.e, arguments.upright)
 	## #----------------- # ##
 	## Read, Resize, Grayscale Query Image ##
 	img1 = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
@@ -127,11 +127,11 @@ if __name__ == '__main__':
 
 		n = n+1
 		## Verbose Results
-		if results.v:
+		if arguments.v:
 
 			img1kp = img1
 			img2kp = img2
-			if results.kpfixed:
+			if arguments.kpfixed:
 				img1kp = util.drawKeypoint(img1kp,kp1)
 				img2kp = util.drawKeypoint(img2kp,kp2)
 			else:
@@ -173,11 +173,11 @@ if __name__ == '__main__':
 			cv2.destroyAllWindows()
 
 		#Output CSV
-		if results.o:
+		if arguments.o:
+			outFolder = "surf_experiments/"
 			util.initWrite()
-			util.writeTest(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
-			util.closeWrite(img2Path,'surf')	
-	subprocess.check_output(["sed -e '!d' surf*.csv >> surf_" + img1Path[8:-4] +"_merge.csv"], shell=True)
+			util.writeFile(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
+			util.closeWrite(outFolder,img2Path,'surf')
 
 	print("\n#### Ranking ####")
 	rList = np.sort(resList, order= 'inliers')[::-1]
@@ -186,7 +186,9 @@ if __name__ == '__main__':
 		print '{percent:.2%}'.format(percent= rList[bestPair][3] )
 
 	## # Results and Experimental Values Logging # ##
-	jList = rList.reshape((n,1))
-	with open('results.json','w') as resultFile:
-		dump( {'Results': jList },resultFile )	
+	if arguments.o:
+		subprocess.check_output(["sed -e '!d' surf_experiments/surf*.csv >> surf_experiments/surf_" + img1Path[8:-4] +"_merge.csv"], shell=True)
+		jList = rList.reshape((n,1))
+		with open('results.json','w') as resultFile:
+			dump( {'Results': jList },resultFile )	
 			
