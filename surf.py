@@ -37,8 +37,8 @@ if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser()
 
-	parser.add_argument('-img1', action='append', dest='im1',
-	                    help='Query Image')
+	parser.add_argument('-dataset', action='store', dest='dataset',
+	                    help='Set dataset Path ending with / ')
 	parser.add_argument('-H', action='store', dest='hss', type=int,
 						default=200, help='Hessian Matrix <0-5000>')
 	parser.add_argument('-nO', action='store', dest='nO', type=int,
@@ -53,12 +53,14 @@ if __name__ == '__main__':
 	                    dest='kpfixed',help='Fixed Keypoint Colour')
 	parser.add_argument('-v', action='store_true',default=False,
 	                    dest='v',help='Save image to file')
-	parser.add_argument('-o', action='store_true',default=False,
-	                    dest='o',help='Save data to CSV')
+	parser.add_argument('-wdata', action='store_true',default=False,
+	                    dest='wdata',help='Save data to CSV')
+	parser.add_argument('-wimages', action='store_true',default=False,
+	                    dest='wimages',help='Save images in query folder')
 	arguments = parser.parse_args()
 
-	if arguments.im1:
-		img1Path = str(arguments.im1)[2:-2]
+	if arguments.dataset:
+		datasetPath = arguments.dataset
 	else:
 		parser.print_help()
 		print("-img1: Query Image")
@@ -66,14 +68,11 @@ if __name__ == '__main__':
 	
 	util = Utilities()		
 	
-	#image counter
-	n = 0
+	# experiment directory
+	expDir = "surf_experiments"
+	qBuildings = ['01','02']	
 	## Prepare Dataset ##
-	dataset = []
-	listImages = glob.glob('dataset/*.jpg')
-	for i in listImages:
-		dataset.append(i.split('/')[-1])
-
+	dataset, queryList = util.createDataset(datasetPath,qBuildings)
 	#creating a list of (<image>,#inliers) pairs
 	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
 	
@@ -85,110 +84,131 @@ if __name__ == '__main__':
 
 	## SURF features and descriptor
 	surf = cv2.xfeatures2d.SURF_create(arguments.hss, arguments.nO, arguments.nL, arguments.e, arguments.upright)
-	## #----------------- # ##
-	## Read, Resize, Grayscale Query Image ##
-	img1 = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
-	img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )
-	kp1, d1 = surf.detectAndCompute(img1Gray, None)
 
-	for img2Path in dataset:
+	for img1Path in queryList:
 
-		print("\nProcessing..")
-		print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
 		## #----------------- # ##
-		## Read, Resize, Grayscale Test Image ##
-		img2 = cv2.resize(cv2.imread("dataset/" + img2Path, 1), (480, 640))
-		img2Gray = cv2.cvtColor(img2,cv2.COLOR_RGB2GRAY )
-		kp2, d2 = surf.detectAndCompute(img2Gray, None)
+		## Read, Resize, Grayscale Query Image ##
+		n = 0
+		img1 = cv2.resize(cv2.imread(datasetPath + img1Path, 1), (480, 640))
+		img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )
+		kp1, d1 = surf.detectAndCompute(img1Gray, None)
 
-		## # Use BFMatcher, Euclidian distance, Eliminate Multiples # ##
-		bf = cv2.BFMatcher(cv2.NORM_L2,crossCheck=True)
-		raw_matches = bf.match(d1,d2)
-		src_points, dst_points, kp_pairs = filter_rawMatches(kp1,kp2,raw_matches)
+		for img2Path in dataset:
+			if img1Path != img2Path:
 
-		print('Matching tentative points in image1: %d, image2: %d' % (len(src_points), len(dst_points)))
+				print("\nProcessing..")
+				print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
+				
+				## #----------------- # ##
+				## Read, Resize, Grayscale Test Image ##
+				img2 = cv2.resize(cv2.imread(datasetPath + img2Path, 1), (480, 640))
+				img2Gray = cv2.cvtColor(img2,cv2.COLOR_RGB2GRAY )
+				kp2, d2 = surf.detectAndCompute(img2Gray, None)
 
-		## # ----------------# ##
-		## # Homography # ##
-		print('#----------------#')
-		print('Homography')
-		print('#----------------#')
-		if len(kp_pairs) > 4:
+				## # Use BFMatcher, Euclidian distance, Eliminate Multiples # ##
+				bf = cv2.BFMatcher(cv2.NORM_L2,crossCheck=True)
+				raw_matches = bf.match(d1,d2)
+				src_points, dst_points, kp_pairs = filter_rawMatches(kp1,kp2,raw_matches)
 
-			Homography, status = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
-			inliers = np.count_nonzero(status)
-			percent = float(inliers) / len(kp_pairs)
+				print('Matching tentative points in image1: %d, image2: %d' % (len(src_points), len(dst_points)))
 
-			print("# Inliers %d out of %d tentative pairs" % (inliers,len(kp_pairs)))
-			rankingList(n,img2Path,inliers,percent)
-		else:
-			rankingList(n,img2Path,0,0)
-			print("Not enough correspondenses")
+				## # ----------------# ##
+				## # Homography # ##
+				print('#----------------#')
+				print('Homography')
+				print('#----------------#')
+				if len(kp_pairs) > 4:
+					Homography, status = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+					inliers = np.count_nonzero(status)
+					percent = float(inliers) / len(kp_pairs)
 
-		n = n+1
-		## Verbose Results
-		if arguments.v:
+					print("# Inliers %d out of %d tentative pairs" % (inliers,len(kp_pairs)))
+					rankingList(n,img2Path,inliers,percent)
+				else:
+					rankingList(n,img2Path,0,0)
+					print("Not enough correspondenses")
 
-			img1kp = img1
-			img2kp = img2
-			if arguments.kpfixed:
-				img1kp = util.drawKeypoint(img1kp,kp1)
-				img2kp = util.drawKeypoint(img2kp,kp2)
-			else:
-				cv2.drawKeypoints(img1kp,kp1,img1kp,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-				cv2.drawKeypoints(img2kp,kp2,img2kp,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-				print("Default Keypoints")
+				n = n+1
+				## Verbose OR WriteOutput
+				if arguments.v or arguments.wimages:
+					img1kp = img1
+					img2kp = img2
 
-			imgTentMatches = cv2.drawMatches(img1kp,kp1,img2kp,kp2,raw_matches,None, flags=2)
-			cv2.imshow('Query',img1kp)
-			cv2.imshow('Test',img2kp)
-			cv2.imshow('Tentative Matches',imgTentMatches)
-
-			try:
-				h1, w1, z1 = img1.shape[:3]
-				h2, w2, z2 = img2.shape[:3]
-				img3 = np.zeros((max(h1, h2), w1+w2,z1), np.uint8)
-				img3[:h1, :w1, :z1] = cv2.resize(cv2.imread(img1Path, 1), (480, 640))
-				img3[:h2, w1:w1+w2, :z2] = cv2.resize(cv2.imread("dataset/" + img2Path, 1), (480, 640))
-
-				p1 = np.int32([kpp[0].pt for kpp in kp_pairs])
-				p2 = np.int32([kpp[1].pt for kpp in kp_pairs]) + (w1, 0)
-
-				for (x1, y1), (x2, y2), inlier in zip(p1,p2, status):
-					if inlier:
-						cv2.circle(img3, (x1, y1), 2, (0,250,0), 5)
-						cv2.circle(img3, (x2, y2), 2, (0,250,0), 5)
-						cv2.line(img3, (x1, y1), (x2, y2), (255,100,0),2)
+					if arguments.kpfixed:
+						img1kp = util.drawKeypoint(img1kp,kp1)
+						img2kp = util.drawKeypoint(img2kp,kp2)
 					else:
-						cv2.line(img3, (x1-2, y1-2), (x1+2, y1+2), (0, 0, 255), 3)
-						cv2.line(img3, (x1-2, y1+2), (x1+2, y1-2), (0, 0, 255), 3)
-						cv2.line(img3, (x2-2, y2-2), (x2+2, y2+2), (0, 0, 255), 3)
-						cv2.line(img3, (x2-2, y2+2), (x2+2, y2-2), (0, 0, 255), 3)
+						cv2.drawKeypoints(img1kp,kp1,img1kp,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+						cv2.drawKeypoints(img2kp,kp2,img2kp,None,flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+						print("Default Keypoints")
+
+					try:
+						h1, w1, z1 = img1.shape[:3]
+						h2, w2, z2 = img2.shape[:3]
+						img3 = np.zeros((max(h1, h2), w1+w2,z1), np.uint8)
+						img3[:h1, :w1, :z1] = cv2.resize(cv2.imread(datasetPath + img1Path, 1), (480, 640))
+						img3[:h2, w1:w1+w2, :z2] = cv2.resize(cv2.imread(datasetPath + img2Path, 1), (480, 640))
+				
+						p1 = np.int32([kpp[0].pt for kpp in kp_pairs])
+						p2 = np.int32([kpp[1].pt for kpp in kp_pairs]) + (w1, 0)
+
+						for (x1, y1), (x2, y2), inlier in zip(p1,p2, status):
+							if inlier:
+								cv2.circle(img3, (x1, y1), 2, (0,250,0), 5)
+								cv2.circle(img3, (x2, y2), 2, (0,250,0), 5)
+								cv2.line(img3, (x1, y1), (x2, y2), (255,100,0),2)
+							else:
+								cv2.line(img3, (x1-2, y1-2), (x1+2, y1+2), (0, 0, 255), 3)
+								cv2.line(img3, (x1-2, y1+2), (x1+2, y1-2), (0, 0, 255), 3)
+								cv2.line(img3, (x2-2, y2-2), (x2+2, y2+2), (0, 0, 255), 3)
+								cv2.line(img3, (x2-2, y2+2), (x2+2, y2-2), (0, 0, 255), 3)
+
+					except (RuntimeError, TypeError, NameError):
+						print("Not enough Inliers")
+
+					if arguments.v:
+						imgTentMatches = cv2.drawMatches(img1kp,kp1,img2kp,kp2,raw_matches,None, flags=2)
+						cv2.imshow('Query',img1kp)
+						cv2.imshow('Test',img2kp)
+						cv2.imshow('Tentative Matches',imgTentMatches)						
+						cv2.imshow('SURF Match + Inliers',img3)
+						cv2.waitKey(0)
+						cv2.destroyAllWindows()
+
+					if arguments.wimages:
+						## Write Matching Image ##
+						util.mkFolder(expDir + "/" + img1Path[:-4] + '/' +img2Path[:-4])
+						cv2.imwrite(expDir + "/" + img1Path[:-4] + '/' +img2Path[:-4] + '/sift_match.jpg', img3)						
+
+				#Output CSV
+				if arguments.wdata:
+					util.mkFolder(expDir + "/" + img1Path[:-4])
+					util.initWrite()
+					util.writeFile(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
+					util.closeWrite(expDir + "/",img2Path,'surf')
+			else:
+				pass				
+				rankingList(n,img2Path,0,0)
+				n+=1
+
+		print("\n#### Ranking ####")
+		rList = np.sort(resList, order= 'inliers')[::-1]
+		for bestPair in range(10):
+			print '#%d: %s -> Inliers: %d' % (bestPair + 1, rList[bestPair][1], rList[bestPair][2])
+			print '{percent:.2%}'.format(percent= rList[bestPair][3] )
+
+		## # Results and Experimental Values Logging # ##
+		if arguments.wdata:
+			try:
+				cmd = "sed -e '!d' surf_experiments/surf*.csv >> surf_experiments/" + img1Path[:-4] + "/data_merged.csv"
+				rm = "rm -r surf_experiments/*.csv surf_experiments/*.xls"
+
+				subprocess.check_output([cmd], shell=True)
+				subprocess.check_output([rm], shell=True)
+				jList = rList.reshape((n,1))
+				with open(expDir + "/" + img1Path[:-4] + '/results.json','w') as resultFile:
+					dump({'Results': jList },resultFile)
 
 			except (RuntimeError, TypeError, NameError):
-				print("Not enough Inliers")
-
-			cv2.imshow('SURF Match + Inliers',img3)
-			cv2.waitKey(0)
-			cv2.destroyAllWindows()
-
-		#Output CSV
-		if arguments.o:
-			outFolder = "surf_experiments/"
-			util.initWrite()
-			util.writeFile(kp2,d2,img1Path,img2Path,inliers,percent,len(kp2))
-			util.closeWrite(outFolder,img2Path,'surf')
-
-	print("\n#### Ranking ####")
-	rList = np.sort(resList, order= 'inliers')[::-1]
-	for bestPair in range(10):
-		print '#%d: %s -> Inliers: %d' % (bestPair + 1, rList[bestPair][1], rList[bestPair][2])
-		print '{percent:.2%}'.format(percent= rList[bestPair][3] )
-
-	## # Results and Experimental Values Logging # ##
-	if arguments.o:
-		subprocess.check_output(["sed -e '!d' surf_experiments/surf*.csv >> surf_experiments/surf_" + img1Path[8:-4] +"_merge.csv"], shell=True)
-		jList = rList.reshape((n,1))
-		with open('results.json','w') as resultFile:
-			dump( {'Results': jList },resultFile )	
-			
+				print("Internal Structure Error")

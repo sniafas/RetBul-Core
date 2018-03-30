@@ -1,16 +1,43 @@
 #!/usr/bin/env python
 
 import cv2
+import errno
 import pandas as pd
+import glob
 import math
+import os
 from openpyxl import Workbook, load_workbook
 
+## Prepare Dataset ##
+dataset = []
+queryList = []
 
 class Utilities:
 
 	def __init__(self):
 		
 		self.initWrite()
+
+	def createDataset(self,datasetPath,qBuildings):		
+
+		listImages = glob.glob(datasetPath + '*.jpg')
+		for i in listImages:
+			dataset.append(i.split('/')[-1])
+
+		for hid in qBuildings:
+			for housename in dataset: 
+				if hid == housename[8:10]:
+					queryList.append(housename)
+
+		return dataset,queryList
+
+	def mkFolder(self,folderName):
+
+		try:
+			os.makedirs(folderName)
+		except OSError as e:
+			if e.errno != errno.EEXIST:
+				raise
 
 	def initWrite(self):
 		
@@ -21,9 +48,9 @@ class Utilities:
 
 	def closeWrite(self,outFolder,image,desc):
 
-		self.fname = outFolder + str(desc) + '_' + str(image[:-4]) + ".xls"
+		self.fname = outFolder + desc + '_' + str(image[:-4]) + ".xls"
 		self.wb.save(self.fname)
-		pd.read_excel(self.fname, sheetname="Dataset").to_csv(outFolder + desc + '_' + image[8:-4] + '_test.csv', index=False)
+		pd.read_excel(self.fname, sheetname="Dataset").to_csv(outFolder + desc + image[:-4] + '.csv', index=False)
 
 	def writeFile(self,keypoints,descriptors,qImage,tImage,inliers,percent,size):
 
