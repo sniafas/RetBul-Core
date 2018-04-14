@@ -8,7 +8,6 @@ import subprocess
 from json_tricks.np import dump, load
 from utilities import Utilities
 
-
 def filter_rawMatches(kp1, kp2, matches, ratio = 0.75):
 
 	mkp1, mkp2 = [], []
@@ -69,8 +68,9 @@ if __name__ == '__main__':
 	qBuildings = ['01','02']
 	## Prepare Dataset ##
 	dataset, queryList = util.createDataset(datasetPath,qBuildings)
-	#creating a result list of (<image>,#inliers,#inliers,#accuracy)
-	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
+	#creating result lists & house rank list of (<image>,#inliers,#inliers,#accuracy)
+	resList = np.zeros(len(dataset), [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float')])
+	rankedClassList = np.zeros(15, [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float'), ('building', 'int8')])
 
 	print("\n================")
 	print("Features", arguments.nFeatures)
@@ -82,18 +82,22 @@ if __name__ == '__main__':
 	## SIFT features and descriptor
 	sift = cv2.xfeatures2d.SIFT_create(arguments.nFeatures,arguments.nOctaveLayers,arguments.contrastThres,arguments.edgeThres,1.6)	
 
-	for img1Path in queryList[:2]:
+	for img1Path in queryList:
 
 		## #----------------- # ##
 		## Read, Resize, Grayscale Query Image ##
-		n = 0		
+		n = 0
+		imgClassList = []
 		img1 = cv2.resize(cv2.imread(datasetPath + img1Path, 1), (480, 640))
 		img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )	
 		kp1, d1 = sift.detectAndCompute(img1Gray, None)
 
-		for img2Path in dataset[:3]:
+		for img2Path in dataset:
 			if img1Path != img2Path:
-				
+
+				if img2Path[8:10] == img1Path[8:10]: # append identical house class to Class result
+					imgClassList.append(img2Path)
+
 				print("\nProcessing..")
 				print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
 
@@ -197,6 +201,19 @@ if __name__ == '__main__':
 			print('#%d: %s -> Inliers: %d') % (bestPair + 1, rList[bestPair][1], rList[bestPair][2])
 			print('{percent:.2%}'.format(percent= rList[bestPair][3]))
 
+		idx = 0
+		for i in range(len(dataset)):
+			if rList[i][1] in imgClassList:
+				rankedClassList[idx][0] = i+1
+				rankedClassList[idx][1] = rList[i][1]
+				rankedClassList[idx][2] = rList[i][2]
+				rankedClassList[idx][3] = rList[i][3]
+				
+				print "%d->%s (%d inliers) " %  (idx,rList[i][1],rList[i][2])
+				print '{percent:.2%}'.format(percent= rList[i][3] )
+				idx+=1
+		classRank = rankedClassList.reshape(15,1)
+
 		## # Results and Experimental Values Logging # ##		
 		if arguments.wdata:
 			try:
@@ -207,7 +224,9 @@ if __name__ == '__main__':
 				subprocess.check_output([rm], shell=True)
 				jList = rList.reshape((n,1))
 				with open(expDir + "/" + img1Path[:-4] + '/results.json','w') as resultFile:
-					dump({'Results': jList },resultFile)
-			
+					dump({'Results': jList }, resultFile)
+				with open(expDir + "/" + img1Path[:-4] + '/classRank.json','w') as cRank:
+					dump( {'ClassRank': classRank  }, cRank )
+								
 			except (RuntimeError, TypeError, NameError):
 				print("Internal Structure Error")

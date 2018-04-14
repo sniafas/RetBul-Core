@@ -4,10 +4,7 @@ import cv2
 import pandas as pd
 import numpy as np
 import argparse,sys
-import math
-import glob
 import subprocess
-from openpyxl import Workbook, load_workbook
 from json_tricks.np import dump, load
 from utilities import Utilities
 
@@ -75,6 +72,7 @@ if __name__ == '__main__':
 	dataset, queryList = util.createDataset(datasetPath,qBuildings)
 	#creating a list of (<image>,#inliers) pairs
 	resList = np.zeros( len(dataset) , [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float') ])
+	rankedClassList = np.zeros(15, [('idx', 'int16'), ('imageId', 'a28'), ('inliers', 'int16'), ('percent', 'float'), ('building', 'int8')])
 	
 	print("\n================")
 	print("Hessian", arguments.hss)
@@ -90,12 +88,16 @@ if __name__ == '__main__':
 		## #----------------- # ##
 		## Read, Resize, Grayscale Query Image ##
 		n = 0
+		imgClassList = []
 		img1 = cv2.resize(cv2.imread(datasetPath + img1Path, 1), (480, 640))
 		img1Gray = cv2.cvtColor(img1,cv2.COLOR_RGB2GRAY )
 		kp1, d1 = surf.detectAndCompute(img1Gray, None)
 
 		for img2Path in dataset:
 			if img1Path != img2Path:
+
+				if img2Path[8:10] == img1Path[8:10]: # append identical house class to Class result
+					imgClassList.append(img2Path)
 
 				print("\nProcessing..")
 				print("Test Image:%s (%d/%d) \n" % (img2Path,n+1,len(dataset)))
@@ -198,6 +200,19 @@ if __name__ == '__main__':
 			print '#%d: %s -> Inliers: %d' % (bestPair + 1, rList[bestPair][1], rList[bestPair][2])
 			print '{percent:.2%}'.format(percent= rList[bestPair][3] )
 
+		idx = 0
+		for i in range(len(dataset)):
+			if rList[i][1] in imgClassList:
+				rankedClassList[idx][0] = i+1
+				rankedClassList[idx][1] = rList[i][1]
+				rankedClassList[idx][2] = rList[i][2]
+				rankedClassList[idx][3] = rList[i][3]
+				
+				print "%d->%s (%d inliers) " %  (idx,rList[i][1],rList[i][2])
+				print '{percent:.2%}'.format(percent= rList[i][3] )
+				idx+=1
+		classRank = rankedClassList.reshape(15,1)
+
 		## # Results and Experimental Values Logging # ##
 		if arguments.wdata:
 			try:
@@ -209,6 +224,8 @@ if __name__ == '__main__':
 				jList = rList.reshape((n,1))
 				with open(expDir + "/" + img1Path[:-4] + '/results.json','w') as resultFile:
 					dump({'Results': jList },resultFile)
+				with open(expDir + "/" + img1Path[:-4] + '/classRank.json','w') as cRank:
+					dump( {'ClassRank': classRank  }, cRank )					
 
 			except (RuntimeError, TypeError, NameError):
 				print("Internal Structure Error")
