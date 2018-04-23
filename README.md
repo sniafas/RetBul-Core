@@ -1,4 +1,4 @@
-# RetBul's Retrieval Core - Feature2d Extraction 
+# RetBul's Image Retrieval Core - Feature2d Extraction
 
 RetBul(Retrieval Building) is an online image retrieval platform applied on a custom dataset of flat buildings in Athens.
 RetBul's retrieval mechanism is implemented with feature extraction techniques using the SURF & SIFT image descriptors.
@@ -19,13 +19,27 @@ You need to install the following software.
 * Pyjson-Tricks
 * [VyronasDb](https://retbul.sniafas.eu/download) - Vyronas Database
 
-### Execute
+## Extraction
 
-You may notice two versions of the same image descriptor script. 
-* The **[descriptor]_single.py** - compares a pair of images.
-* The **[descriptor].py** - compares an image to the reference dataset.
+Extract handcrafted image features, build a ranking list with the number of inliers, of the most to the less relevant to the query image.
 
-Only in Linux machine. Execute as a single script.
+* **[descriptor]_single.py** - 1 to 1 query images.
+* **[descriptor].py** - many to many query images. Setup one or more building queries to the reference dataset. 
+
+## Preprocessing
+
+Parsing the extracted data in order to evaluate them in:
+* Precision, Recall, F-Measure
+* Eleven Point Interpolation
+* Highest F-Measure / Building
+* Mean Average Precision
+
+## Evaluation
+
+Plotting the processed data
+
+
+**Extraction and preprocessing would run only in a Linux machine.**
 
 ## License
 
